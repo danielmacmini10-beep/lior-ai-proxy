@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-import anthropic
+import requests
 import os
 
 app = Flask(__name__)
@@ -22,13 +22,27 @@ def ai_proxy():
     try:
         data = request.get_json()
         prompt = data.get('prompt', '')
-        client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
-        message = client.messages.create(
-            model='claude-sonnet-4-20250514',
-            max_tokens=1500,
-            messages=[{'role': 'user', 'content': prompt}]
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        
+        response = requests.post(
+            'https://api.anthropic.com/v1/messages',
+            headers={
+                'x-api-key': api_key,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json'
+            },
+            json={
+                'model': 'claude-sonnet-4-20250514',
+                'max_tokens': 1500,
+                'messages': [{'role': 'user', 'content': prompt}]
+            },
+            timeout=60
         )
-        return jsonify({'result': message.content[0].text})
+        
+        result = response.json()
+        text = result['content'][0]['text']
+        return jsonify({'result': text})
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
