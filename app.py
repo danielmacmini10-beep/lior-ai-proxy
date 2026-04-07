@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
-import requests
-import os
+import requests, os
 
 app = Flask(__name__)
+
+SHOPIFY_STORE = "phaqdr-wq.myshopify.com"
+SHOPIFY_TOKEN = os.environ.get('SHOPIFY_TOKEN')
 
 @app.after_request
 def add_cors(response):
@@ -12,37 +14,40 @@ def add_cors(response):
     return response
 
 @app.route('/')
-def home():
-    return 'Lior AI Proxy is running!'
+def home(): return 'Lior AI Proxy is running!'
 
 @app.route('/ai', methods=['POST', 'OPTIONS'])
 def ai_proxy():
-    if request.method == 'OPTIONS':
-        return '', 200
+    if request.method == 'OPTIONS': return '', 200
     try:
         data = request.get_json()
         prompt = data.get('prompt', '')
-        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        response = requests.post('https://api.anthropic.com/v1/messages',
+            headers={'x-api-key': os.environ.get('ANTHROPIC_API_KEY'),
+                     'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
+            json={'model': 'claude-sonnet-4-20250514', 'max_tokens': 1500,
+                  'messages': [{'role': 'user', 'content': prompt}]}, timeout=60)
+        return jsonify({'result': response.json()['content'][0]['text']})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/shopify', methods=['GET', 'OPTIONS'])
+def shopify_proxy():
+    if request.method == 'OPTIONS': return '', 200
+    try:
+        endpoint = request.args.get('endpoint', '')
+        params = request.args.to_dict()
+        params.pop('endpoint', None)
         
-        response = requests.post(
-            'https://api.anthropic.com/v1/messages',
+        url = f"https://{SHOPIFY_STORE}/admin/api/2026-01/{endpoint}.json"
+        response = requests.get(url,
             headers={
-                'x-api-key': api_key,
-                'anthropic-version': '2023-06-01',
-                'content-type': 'application/json'
+                'X-Shopify-Access-Token': SHOPIFY_TOKEN,
+                'Content-Type': 'application/json'
             },
-            json={
-                'model': 'claude-sonnet-4-20250514',
-                'max_tokens': 1500,
-                'messages': [{'role': 'user', 'content': prompt}]
-            },
-            timeout=60
-        )
-        
-        result = response.json()
-        text = result['content'][0]['text']
-        return jsonify({'result': text})
-        
+            params=params,
+            timeout=30)
+        return jsonify(response.json())
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
